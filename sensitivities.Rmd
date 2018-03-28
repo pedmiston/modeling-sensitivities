@@ -166,3 +166,58 @@ gridExtra::grid.arrange(
   nrow = 1
 )
 ```
+
+```{r, echo = 1:2}
+training_sensitivity_ori_mod <- lmer(gem_x_rel_c ~ instructions_c + (1|subj_id), data = Training)
+training_sensitivity_sf_mod <- lmer(gem_y_rel_c ~ instructions_c + (1|subj_id), data = Training)
+
+recode_dimension <- function(frame) {
+  dimension_levels <- c("gem_x_rel_c", "gem_y_rel_c")
+  dimension_labels <- c("relative orientation", "relative bar width")
+  dimension_map <- data_frame(
+    dimension = dimension_levels,
+    dimension_label = factor(dimension, levels = dimension_levels, labels = dimension_labels)
+  )
+  if(missing(frame)) return(frame)
+  left_join(frame, dimension_map)
+}
+
+TrainingRel <- Training %>%
+  select(subj_id, instructions_c, gem_x_rel_c, gem_y_rel_c) %>%
+  gather(dimension, relative, -subj_id, -instructions_c) %>%
+  recode_instructions() %>%
+  recode_dimension()
+
+training_sensitivity_ori_preds <- expand.grid(
+  instructions_c = c(-0.5, 0.5)
+) %>%
+  cbind(., predictSE(training_sensitivity_ori_mod, newdata = ., se = TRUE)) %>%
+  as_data_frame() %>%
+  rename(relative = fit, se = se.fit)
+
+training_sensitivity_sf_preds <- expand.grid(
+  instructions_c = c(-0.5, 0.5)
+) %>%
+  cbind(., predictSE(training_sensitivity_sf_mod, newdata = ., se = TRUE)) %>%
+  as_data_frame() %>%
+  rename(relative = fit, se = se.fit)
+
+training_sensitivity_preds <- bind_rows(
+  gem_x_rel_c = training_sensitivity_ori_preds,
+  gem_y_rel_c = training_sensitivity_sf_preds,
+  .id = "dimension"
+) %>%
+  recode_instructions() %>%
+  recode_dimension()
+
+ggplot(TrainingRel) +
+  aes(dimension_label, relative, color = instructions) +
+  geom_line(aes(group = subj_id), stat = "summary", fun.y = "mean") +
+  geom_smooth(aes(ymin = relative-se, ymax = relative+se, group = instructions),
+              data = training_sensitivity_preds, stat = "identity") +
+  facet_wrap("instructions") +
+  scale_x_discrete("") +
+  scale_y_continuous("") +
+  t_$theme +
+  theme(legend.position = "none")
+```
